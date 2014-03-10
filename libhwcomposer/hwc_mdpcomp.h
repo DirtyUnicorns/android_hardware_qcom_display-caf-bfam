@@ -6,7 +6,6 @@
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -65,6 +64,14 @@ protected:
         MDPCOMP_OV_VG = ovutils::OV_MDP_PIPE_VG,
         MDPCOMP_OV_DMA = ovutils::OV_MDP_PIPE_DMA,
         MDPCOMP_OV_ANY,
+    };
+
+    //Simulation flags
+    enum {
+        MDPCOMP_AVOID_FULL_MDP = 0x001,
+        MDPCOMP_AVOID_CACHE_MDP = 0x002,
+        MDPCOMP_AVOID_LOAD_MDP = 0x004,
+        MDPCOMP_AVOID_VIDEO_ONLY = 0x008,
     };
 
     /* mdp pipe data */
@@ -228,6 +235,7 @@ protected:
     int mDpy;
     static bool sEnabled;
     static bool sEnableMixedMode;
+    static int sSimulationFlags;
     static bool sDebugLogs;
     static bool sIdleFallBack;
     /* Handles the timeout event from kernel, if the value is set to true */
