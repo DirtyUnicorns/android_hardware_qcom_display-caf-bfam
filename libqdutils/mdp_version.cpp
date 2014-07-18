@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -66,13 +66,14 @@ MDPVersion::MDPVersion()
     mFeatures = 0;
     mMDPUpscale = 0;
     mMDPDownscale = 0;
-    mPanelType = NO_PANEL;
+    mMacroTileEnabled = false;
     mLowBw = 0;
     mHighBw = 0;
+    mSourceSplit = false;
+    mRGBHasNoScalar = false;
 
-    if(!updatePanelInfo()) {
-        ALOGE("Unable to read Primary Panel Information");
-    }
+    updatePanelInfo();
+
     if(!updateSysFsInfo()) {
         ALOGE("Unable to read display sysfs node");
     }
@@ -98,7 +99,7 @@ int MDPVersion::tokenizeParams(char *inputParams, const char *delim,
                                 char* tokenStr[], int *idx) {
     char *tmp_token = NULL;
     char *temp_ptr;
-    int ret = 0, index = 0;
+    int index = 0;
     if (!inputParams) {
         return -1;
     }
@@ -112,10 +113,12 @@ int MDPVersion::tokenizeParams(char *inputParams, const char *delim,
 }
 // This function reads the sysfs node to read the primary panel type
 // and updates information accordingly
-bool MDPVersion::updatePanelInfo() {
+void  MDPVersion::updatePanelInfo() {
     FILE *displayDeviceFP = NULL;
+    FILE *panelInfoNodeFP = NULL;
     const int MAX_FRAME_BUFFER_NAME_SIZE = 128;
     char fbType[MAX_FRAME_BUFFER_NAME_SIZE];
+    char panelInfo[MAX_FRAME_BUFFER_NAME_SIZE];
     const char *strCmdPanel = "mipi dsi cmd panel";
     const char *strVideoPanel = "mipi dsi video panel";
     const char *strLVDSPanel = "lvds panel";
@@ -126,21 +129,74 @@ bool MDPVersion::updatePanelInfo() {
         fread(fbType, sizeof(char), MAX_FRAME_BUFFER_NAME_SIZE,
                 displayDeviceFP);
         if(strncmp(fbType, strCmdPanel, strlen(strCmdPanel)) == 0) {
-            mPanelType = MIPI_CMD_PANEL;
+            mPanelInfo.mType = MIPI_CMD_PANEL;
         }
         else if(strncmp(fbType, strVideoPanel, strlen(strVideoPanel)) == 0) {
-            mPanelType = MIPI_VIDEO_PANEL;
+            mPanelInfo.mType = MIPI_VIDEO_PANEL;
         }
         else if(strncmp(fbType, strLVDSPanel, strlen(strLVDSPanel)) == 0) {
-            mPanelType = LVDS_PANEL;
+            mPanelInfo.mType = LVDS_PANEL;
         }
         else if(strncmp(fbType, strEDPPanel, strlen(strEDPPanel)) == 0) {
-            mPanelType = EDP_PANEL;
+            mPanelInfo.mType = EDP_PANEL;
         }
         fclose(displayDeviceFP);
-        return true;
-    }else {
-        return false;
+    } else {
+        ALOGE("Unable to read Primary Panel Information");
+    }
+
+    panelInfoNodeFP = fopen("/sys/class/graphics/fb0/msm_fb_panel_info", "r");
+    if(panelInfoNodeFP){
+        size_t len = PAGE_SIZE;
+        ssize_t read;
+        char *readLine = (char *) malloc (len);
+        while((read = getline((char **)&readLine, &len,
+                              panelInfoNodeFP)) != -1) {
+            int token_ct=0;
+            char *tokens[10];
+            memset(tokens, 0, sizeof(tokens));
+
+            if(!tokenizeParams(readLine, TOKEN_PARAMS_DELIM, tokens,
+                               &token_ct)) {
+                if(!strncmp(tokens[0], "pu_en", strlen("pu_en"))) {
+                    mPanelInfo.mPartialUpdateEnable = atoi(tokens[1]);
+                    ALOGI("PartialUpdate status: %s",
+                          mPanelInfo.mPartialUpdateEnable? "Enabled" :
+                          "Disabled");
+                }
+                if(!strncmp(tokens[0], "xalign", strlen("xalign"))) {
+                    mPanelInfo.mLeftAlign = atoi(tokens[1]);
+                    ALOGI("Left Align: %d", mPanelInfo.mLeftAlign);
+                }
+                if(!strncmp(tokens[0], "walign", strlen("walign"))) {
+                    mPanelInfo.mWidthAlign = atoi(tokens[1]);
+                    ALOGI("Width Align: %d", mPanelInfo.mWidthAlign);
+                }
+                if(!strncmp(tokens[0], "ystart", strlen("ystart"))) {
+                    mPanelInfo.mTopAlign = atoi(tokens[1]);
+                    ALOGI("Top Align: %d", mPanelInfo.mTopAlign);
+                }
+                if(!strncmp(tokens[0], "halign", strlen("halign"))) {
+                    mPanelInfo.mHeightAlign = atoi(tokens[1]);
+                    ALOGI("Height Align: %d", mPanelInfo.mHeightAlign);
+                }
+                if(!strncmp(tokens[0], "min_w", strlen("min_w"))) {
+                    mPanelInfo.mMinROIWidth = atoi(tokens[1]);
+                    ALOGI("Min ROI Width: %d", mPanelInfo.mMinROIWidth);
+                }
+                if(!strncmp(tokens[0], "min_h", strlen("min_h"))) {
+                    mPanelInfo.mMinROIHeight = atoi(tokens[1]);
+                    ALOGI("Min ROI Height: %d", mPanelInfo.mMinROIHeight);
+                }
+                if(!strncmp(tokens[0], "roi_merge", strlen("roi_merge"))) {
+                    mPanelInfo.mNeedsROIMerge = atoi(tokens[1]);
+                    ALOGI("Needs ROI Merge: %d", mPanelInfo.mNeedsROIMerge);
+                }
+            }
+        }
+        fclose(panelInfoNodeFP);
+    } else {
+        ALOGE("Failed to open msm_fb_panel_info node");
     }
 }
 
@@ -155,6 +211,14 @@ bool MDPVersion::updateSysFsInfo() {
     memset(sysfsPath, 0, sizeof(sysfsPath));
     snprintf(sysfsPath , sizeof(sysfsPath),
             "/sys/class/graphics/fb0/mdp/caps");
+    char property[PROPERTY_VALUE_MAX];
+    bool enableMacroTile = false;
+
+    if((property_get("persist.hwc.macro_tile_enable", property, NULL) > 0) &&
+       (!strncmp(property, "1", PROPERTY_VALUE_MAX ) ||
+        (!strncasecmp(property,"true", PROPERTY_VALUE_MAX )))) {
+        enableMacroTile = true;
+    }
 
     sysfsFd = fopen(sysfsPath, "rb");
 
@@ -175,13 +239,13 @@ bool MDPVersion::updateSysFsInfo() {
                     mMdpRev = atoi(tokens[1]);
                 }
                 else if(!strncmp(tokens[0], "rgb_pipes", strlen("rgb_pipes"))) {
-                    mRGBPipes = atoi(tokens[1]);
+                    mRGBPipes = (uint8_t)atoi(tokens[1]);
                 }
                 else if(!strncmp(tokens[0], "vig_pipes", strlen("vig_pipes"))) {
-                    mVGPipes = atoi(tokens[1]);
+                    mVGPipes = (uint8_t)atoi(tokens[1]);
                 }
                 else if(!strncmp(tokens[0], "dma_pipes", strlen("dma_pipes"))) {
-                    mDMAPipes = atoi(tokens[1]);
+                    mDMAPipes = (uint8_t)atoi(tokens[1]);
                 }
                 else if(!strncmp(tokens[0], "max_downscale_ratio",
                                 strlen("max_downscale_ratio"))) {
@@ -204,6 +268,18 @@ bool MDPVersion::updateSysFsInfo() {
                         else if(!strncmp(tokens[i], "decimation",
                                     strlen("decimation"))) {
                            mFeatures |= MDP_DECIMATION_EN;
+                        }
+                        else if(!strncmp(tokens[i], "tile_format",
+                                    strlen("tile_format"))) {
+                           if(enableMacroTile)
+                               mMacroTileEnabled = true;
+                        } else if(!strncmp(tokens[i], "src_split",
+                                    strlen("src_split"))) {
+                            mSourceSplit = true;
+                        }
+                        else if(!strncmp(tokens[i], "non_scalar_rgb",
+                                    strlen("non_scalar_rgb"))) {
+                            mRGBHasNoScalar = true;
                         }
                     }
                 }
@@ -232,6 +308,7 @@ bool MDPVersion::updateSplitInfo() {
         if(fp){
             //Format "left right" space as delimiter
             if(fread(split, sizeof(char), 64, fp)) {
+                split[sizeof(split) - 1] = '\0';
                 mSplit.mLeft = atoi(split);
                 ALOGI_IF(mSplit.mLeft, "Left Split=%d", mSplit.mLeft);
                 char *rght = strpbrk(split, " ");
@@ -256,6 +333,10 @@ bool MDPVersion::supportsDecimation() {
 
 uint32_t MDPVersion::getMaxMDPDownscale() {
     return mMDPDownscale;
+}
+
+uint32_t MDPVersion::getMaxMDPUpscale() {
+    return mMDPUpscale;
 }
 
 bool MDPVersion::supportsBWC() {

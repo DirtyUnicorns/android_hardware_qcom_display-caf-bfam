@@ -41,7 +41,7 @@ int getHDMINode(void)
     char msmFbTypePath[MAX_FRAME_BUFFER_NAME_SIZE];
     int j = 0;
 
-    for(j = 0; j < MAX_DISPLAY_DEVICES; j++) {
+    for(j = 0; j < HWC_NUM_DISPLAY_TYPES; j++) {
         snprintf (msmFbTypePath, sizeof(msmFbTypePath),
                   "/sys/class/graphics/fb%d/msm_fb_type", j);
         displayDeviceFP = fopen(msmFbTypePath, "r");
@@ -59,7 +59,7 @@ int getHDMINode(void)
         }
     }
 
-    if (j < MAX_DISPLAY_DEVICES)
+    if (j < HWC_NUM_DISPLAY_TYPES)
         return j;
     else
         ALOGE("%s: Failed to find HDMI node", __func__);
@@ -89,7 +89,7 @@ int getEdidRawData(char *buffer)
         return 0;
     }
 
-    size = read(edidFile, (char*)buffer, EDID_RAW_DATA_SIZE);
+    size = (int)read(edidFile, (char*)buffer, EDID_RAW_DATA_SIZE);
     close(edidFile);
     return size;
 }

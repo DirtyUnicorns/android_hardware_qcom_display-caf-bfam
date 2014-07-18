@@ -43,7 +43,7 @@ namespace qdutils {
 int CBUtils::getuiClearRegion(hwc_display_contents_1_t* list,
           hwc_rect_t &clearWormholeRect, LayerProp *layerProp) {
 
-    uint32_t last = list->numHwLayers - 1;
+    size_t last = list->numHwLayers - 1;
     hwc_rect_t fbFrame = list->hwLayers[last].displayFrame;
     Rect fbFrameRect(fbFrame.left,fbFrame.top,fbFrame.right,fbFrame.bottom);
     Region wormholeRegion(fbFrameRect);
