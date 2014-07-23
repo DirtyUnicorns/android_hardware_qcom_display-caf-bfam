@@ -42,6 +42,7 @@
 #include "hwc_qclient.h"
 #include "QService.h"
 #include "comptype.h"
+#include "hwc_virtual.h"
 #include "qd_utils.h"
 
 using namespace qClient;
@@ -279,19 +280,6 @@ void initContext(hwc_context_t *ctx)
     // Initialize device orientation to its default orientation
     ctx->deviceOrientation = 0;
     ctx->mBufferMirrorMode = false;
-    ctx->mVPUClient = NULL;
-
-    // Read the system property to determine if downscale feature is enabled.
-    ctx->mMDPDownscaleEnabled = false;
-    char value[PROPERTY_VALUE_MAX];
-    if(property_get("sys.hwc.mdp_downscale_enabled", value, "false")
-            && !strcmp(value, "true")) {
-        ctx->mMDPDownscaleEnabled = true;
-    }
-
-#ifdef VPU_TARGET
-    ctx->mVPUClient = new VPUClient();
-#endif
 
     // Read the system property to determine if downscale feature is enabled.
     ctx->mMDPDownscaleEnabled = false;
@@ -494,26 +482,19 @@ void getAspectRatioPosition(hwc_context_t* ctx, int dpy, int extOrientation,
                                (int)actualHeight, rect);
         xPos = rect.left;
         yPos = rect.top;
-        width = rect.right - rect.left;
-        height = rect.bottom - rect.top;
-        // swap viewframe coordinates for 90 degree rotation.
-        swap(viewFrame.left, viewFrame.top);
-        swap(viewFrame.right, viewFrame.bottom);
+        width = float(rect.right - rect.left);
+        height = float(rect.bottom - rect.top);
     }
-    // if viewframe left and top coordinates are non zero value then exclude it
-    // during the computation of xRatio and yRatio
-    xRatio = (inPos.x - viewFrame.left)/actualWidth;
-    yRatio = (inPos.y - viewFrame.top)/actualHeight;
-    // Use viewframe width and height to compute wRatio and hRatio.
-    wRatio = (float)inPos.w/(float)(viewFrame.right - viewFrame.left);
-    hRatio = (float)inPos.h/(float)(viewFrame.bottom - viewFrame.top);
+    xRatio = (float)(inPos.x/actualWidth);
+    yRatio = (float)(inPos.y/actualHeight);
+    wRatio = (float)(inPos.w/actualWidth);
+    hRatio = (float)(inPos.h/actualHeight);
 
-
-    //Calculate the position...
-    outPos.x = (xRatio * width) + xPos;
-    outPos.y = (yRatio * height) + yPos;
-    outPos.w = wRatio * width;
-    outPos.h = hRatio * height;
+    //Calculate the pos9ition...
+    outPos.x = uint32_t((xRatio * width) + (float)xPos);
+    outPos.y = uint32_t((yRatio * height) + (float)yPos);
+    outPos.w = uint32_t(wRatio * width);
+    outPos.h = uint32_t(hRatio * height);
     ALOGD_IF(HWC_UTILS_DEBUG, "%s: Calculated AspectRatio Position: x = %d,"
                  "y = %d w = %d h = %d", __FUNCTION__, outPos.x, outPos.y,
                  outPos.w, outPos.h);
@@ -833,28 +814,6 @@ static void trimList(hwc_context_t *ctx, hwc_display_contents_1_t *list,
     }
 }
 
-hwc_rect_t calculateDisplayViewFrame(hwc_context_t *ctx, int dpy) {
-    int dstWidth = ctx->dpyAttr[dpy].xres;
-    int dstHeight = ctx->dpyAttr[dpy].yres;
-    int srcWidth = ctx->dpyAttr[HWC_DISPLAY_PRIMARY].xres;
-    int srcHeight = ctx->dpyAttr[HWC_DISPLAY_PRIMARY].yres;
-    // default we assume viewframe as a full frame for primary display
-    hwc_rect outRect = {0, 0, dstWidth, dstHeight};
-    if(dpy) {
-        // swap srcWidth and srcHeight, if the device orientation is 90 or 270.
-        if(ctx->deviceOrientation & 0x1) {
-            swap(srcWidth, srcHeight);
-        }
-        // Get Aspect Ratio for external
-        getAspectRatioPosition(dstWidth, dstHeight, srcWidth,
-                            srcHeight, outRect);
-    }
-    ALOGD_IF(HWC_UTILS_DEBUG, "%s: view frame for dpy %d is [%d %d %d %d]",
-        __FUNCTION__, dpy, outRect.left, outRect.top,
-        outRect.right, outRect.bottom);
-    return outRect;
-}
-
 void setListStats(hwc_context_t *ctx,
         hwc_display_contents_1_t *list, int dpy) {
     const int prevYuvCount = ctx->listStats[dpy].yuvCount;
@@ -876,10 +835,6 @@ void setListStats(hwc_context_t *ctx,
 
     trimList(ctx, list, dpy);
     optimizeLayerRects(list);
-
-    // Calculate view frame of ext display from primary resolution
-    // and primary device orientation.
-    ctx->mViewFrame[dpy] = calculateDisplayViewFrame(ctx, dpy);
 
     for (size_t i = 0; i < (size_t)ctx->listStats[dpy].numAppLayers; i++) {
         hwc_layer_1_t const* layer = &list->hwLayers[i];
@@ -1241,7 +1196,8 @@ void optimizeLayerRects(const hwc_display_contents_1_t *list) {
                   hwc_rect_t& bottomframe = layer->displayFrame;
                   hwc_rect_t bottomCrop =
                       integerizeSourceCrop(layer->sourceCropf);
-                  int transform =layer->transform;
+                  int transform = (layer->flags & HWC_COLOR_FILL) ? 0 :
+                      layer->transform;
 
                   hwc_rect_t irect = getIntersection(bottomframe, topframe);
                   if(isValidRect(irect)) {
@@ -1251,10 +1207,15 @@ void optimizeLayerRects(const hwc_display_contents_1_t *list) {
                      qhwc::calculate_crop_rects(bottomCrop, bottomframe,
                                                 dest_rect, transform);
                      //Update layer sourceCropf
-                     layer->sourceCropf.left = bottomCrop.left;
-                     layer->sourceCropf.top = bottomCrop.top;
-                     layer->sourceCropf.right = bottomCrop.right;
-                     layer->sourceCropf.bottom = bottomCrop.bottom;
+                     layer->sourceCropf.left =(float)bottomCrop.left;
+                     layer->sourceCropf.top = (float)bottomCrop.top;
+                     layer->sourceCropf.right = (float)bottomCrop.right;
+                     layer->sourceCropf.bottom = (float)bottomCrop.bottom;
+#ifdef QCOM_BSP
+                     //Update layer dirtyRect
+                     layer->dirtyRect = getIntersection(bottomCrop,
+                                            layer->dirtyRect);
+#endif
                   }
                }
                j--;
@@ -1371,6 +1332,11 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
     }
 
     //Accumulate acquireFenceFds for MDP Overlays
+    if(list->outbufAcquireFenceFd >= 0) {
+        //Writeback output buffer
+        acquireFd[count++] = list->outbufAcquireFenceFd;
+    }
+
     for(uint32_t i = 0; i < list->numHwLayers; i++) {
         if(list->hwLayers[i].compositionType == HWC_OVERLAY &&
                         list->hwLayers[i].acquireFenceFd >= 0) {
@@ -1434,13 +1400,16 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
                 // Release all the app layer fds immediately,
                 // if animation is in progress.
                 list->hwLayers[i].releaseFenceFd = -1;
-            } else if(list->hwLayers[i].releaseFenceFd < 0) {
-                //If rotator has not already populated this field.
+            } else if(list->hwLayers[i].releaseFenceFd < 0 ) {
+#ifdef QCOM_BSP
+                //If rotator has not already populated this field
                 if(list->hwLayers[i].compositionType == HWC_BLIT) {
                     //For Blit, the app layers should be released when the Blit is
                     //complete. This fd was passed from copybit->draw
                     list->hwLayers[i].releaseFenceFd = dup(fd);
-                } else {
+                } else
+#endif
+                {
                     list->hwLayers[i].releaseFenceFd = dup(releaseFd);
                 }
             }
@@ -2022,7 +1991,7 @@ int configureSourceSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
 }
 
 bool canUseRotator(hwc_context_t *ctx, int dpy) {
-    if(qdutils::MDPVersion::getInstance().is8x26() &&
+    if(ctx->mOverlay->isDMAMultiplexingSupported() &&
             isSecondaryConnected(ctx) &&
             !ctx->dpyAttr[HWC_DISPLAY_VIRTUAL].isPause) {
         /* mdss driver on certain targets support multiplexing of DMA pipe

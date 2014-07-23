@@ -241,11 +241,6 @@ inline bool isNonIntegralSourceCrop(const hwc_frect_t& cropF) {
 // -----------------------------------------------------------------------------
 // Utility functions - implemented in hwc_utils.cpp
 void dumpLayer(hwc_layer_1_t const* l);
-
-// Calculate viewframe for external/primary display from primary resolution and
-// primary device orientation
-hwc_rect_t calculateDisplayViewFrame(hwc_context_t *ctx, int dpy);
-
 void setListStats(hwc_context_t *ctx, hwc_display_contents_1_t *list,
         int dpy);
 void initContext(hwc_context_t *ctx);
@@ -576,10 +571,18 @@ struct hwc_context_t {
     qhwc::LayerRotMap *mLayerRotMap[HWC_NUM_DISPLAY_TYPES];
     // Panel reset flag will be set if BTA check fails
     bool mPanelResetStatus;
-
-    // Downscale feature switch, set via system the property
+    // number of active Displays
+    int numActiveDisplays;
+    // Downscale feature switch, set via system property
     // sys.hwc.mdp_downscale_enabled
     bool mMDPDownscaleEnabled;
+    // Is WFD enabled through VDS solution ?
+    // This can be set via system property
+    // persist.hwc.enable_vds
+    bool mVDSEnabled;
+    struct gpu_hint_info mGPUHintInfo;
+    // PTOR Info
+    qhwc::PtorInfo mPtorInfo;
 };
 
 namespace qhwc {
@@ -600,9 +603,14 @@ inline bool isSecurePresent(hwc_context_t *ctx, int dpy) {
     return ctx->listStats[dpy].isSecurePresent;
 }
 
+static inline bool isSecondaryConfiguring(hwc_context_t* ctx) {
+    return (ctx->dpyAttr[HWC_DISPLAY_EXTERNAL].isConfiguring ||
+            ctx->dpyAttr[HWC_DISPLAY_VIRTUAL].isConfiguring);
+}
+
 static inline bool isSecondaryConnected(hwc_context_t* ctx) {
     return (ctx->dpyAttr[HWC_DISPLAY_EXTERNAL].connected ||
-    ctx->dpyAttr[HWC_DISPLAY_VIRTUAL].connected);
+            ctx->dpyAttr[HWC_DISPLAY_VIRTUAL].connected);
 }
 
 };

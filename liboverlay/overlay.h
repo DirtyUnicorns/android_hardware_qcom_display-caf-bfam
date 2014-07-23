@@ -148,6 +148,10 @@ public:
     static int getFbForDpy(const int& dpy);
 
     static bool displayCommit(const int& fd);
+    /* Overloads display commit with ROI's of each halves.
+     * Single interface panels will only update left ROI. */
+    static bool displayCommit(const int& fd, const utils::Dim& lRoi,
+                              const utils::Dim& rRoi);
 
 private:
     /* Ctor setup */
@@ -156,8 +160,20 @@ private:
     void validate(int index);
     static void setDMAMultiplexingSupported();
     void dump() const;
-    /* Returns the scalar object */
-    static scale::Scale *getScalar();
+    /* Returns an available pipe based on the type of pipe requested. When ANY
+     * is requested, the first available VG or RGB is returned. If no pipe is
+     * available for the display "dpy" then INV is returned. Note: If a pipe is
+     * assigned to a certain display, then it cannot be assigned to another
+     * display without being garbage-collected once. To add if a pipe is
+     * asisgned to a mixer within a display it cannot be reused for another
+     * mixer without being UNSET once*/
+    utils::eDest nextPipe(utils::eMdpPipeType, int dpy, int mixer);
+    /* Helpers that enfore target specific policies while returning pipes */
+    utils::eDest getPipe_8x26(const PipeSpecs& pipeSpecs);
+    utils::eDest getPipe_8x16(const PipeSpecs& pipeSpecs);
+
+    /* Returns the handle to libscale.so's programScale function */
+    static int (*getFnProgramScale())(struct mdp_overlay_list *);
     /* Creates a scalar object using libscale.so */
     static void initScalar();
     /* Destroys the scalar object using libscale.so */
@@ -230,7 +246,7 @@ private:
     static int sDMAMode;
     static bool sDMAMultiplexingSupported;
     static void *sLibScaleHandle;
-    static scale::Scale *sScale;
+    static int (*sFnProgramScale)(struct mdp_overlay_list *);
 
     friend class MdpCtrl;
 };

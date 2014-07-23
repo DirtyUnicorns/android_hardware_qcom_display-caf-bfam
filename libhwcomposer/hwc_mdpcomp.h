@@ -55,7 +55,7 @@ public:
     /* Initialize MDP comp*/
     static bool init(hwc_context_t *ctx);
     static void resetIdleFallBack() { sIdleFallBack = false; }
-    static void reset() { sHandleTimeout = false; };
+    static bool isIdleFallback() { return sIdleFallBack; }
 
 protected:
     enum { MAX_SEC_LAYERS = 1 }; //TODO add property support
@@ -230,9 +230,10 @@ protected:
     static bool sEnableMixedMode;
     static bool sDebugLogs;
     static bool sIdleFallBack;
-    /* Handles the timeout event from kernel, if the value is set to true  */
+    /* Handles the timeout event from kernel, if the value is set to true */
     static bool sHandleTimeout;
     static int sMaxPipesPerMixer;
+    static bool sSrcSplitEnabled;
     static IdleInvalidator *idleInvalidator;
     struct FrameInfo mCurrentFrame;
     struct LayerCache mCachedFrame;
@@ -303,7 +304,7 @@ protected:
     /* allocates pipes to selected candidates */
     virtual bool allocLayerPipes(hwc_context_t *ctx,
                                  hwc_display_contents_1_t* list);
-
+private:
     /* Increments mdpCount if 4k2k yuv layer split is enabled.
      * updates framebuffer z order if fb lies above source-split layer */
     virtual void adjustForSourceSplit(hwc_context_t *ctx,
@@ -312,6 +313,26 @@ protected:
     /* configures 4kx2k yuv layer*/
     virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
             PipeLayerPair& PipeLayerPair);
+    /* generates ROI based on the modified area of the frame */
+    virtual void generateROI(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list);
+    /* validates the ROI generated for fallback conditions */
+    virtual bool validateAndApplyROI(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list);
+    /* Trims fbRect calculated against ROI generated */
+    virtual void trimAgainstROI(hwc_context_t *ctx, hwc_rect_t& fbRect);
+};
+
+class MDPCompSrcSplit : public MDPCompSplit {
+public:
+    explicit MDPCompSrcSplit(int dpy) : MDPCompSplit(dpy){};
+    virtual ~MDPCompSrcSplit(){};
+private:
+    virtual bool acquireMDPPipes(hwc_context_t *ctx, hwc_layer_1_t* layer,
+            MdpPipeInfoSplit& pipe_info);
+
+    virtual int configure(hwc_context_t *ctx, hwc_layer_1_t *layer,
+            PipeLayerPair& pipeLayerPair);
 };
 
 }; //namespace

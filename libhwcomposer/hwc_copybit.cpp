@@ -27,6 +27,8 @@
 #include "cb_utils.h"
 #include "cb_swap_rect.h"
 #include "math.h"
+#include "sync/sync.h"
+
 using namespace qdutils;
 namespace qhwc {
 
@@ -452,9 +454,9 @@ bool CopyBit::draw(hwc_context_t *ctx, hwc_display_contents_1_t *list,
             ALOGD_IF(DEBUG_COPYBIT, "%s: Not Marked for copybit", __FUNCTION__);
             continue;
         }
-        if(layer->flags & HWC_SKIP_HWC_COMPOSITION){
+        //skip non updating layers
+        if((mDirtyLayerIndex != -1) && (mDirtyLayerIndex != i) )
             continue;
-        }
         int ret = -1;
         if (list->hwLayers[i].acquireFenceFd != -1
                 && ctx->mMDP.version >= qdutils::MDP_V4_0) {
@@ -793,8 +795,8 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
          // ceil the tmp_w and tmp_h value to maintain proper ratio
          // b/w src and dst (should not cross the desired scale limit
          // due to float -> int )
-         tmp_w = ceil(src_crop_width/copybitsMinScale);
-         tmp_h = ceil(src_crop_height/copybitsMinScale);
+         tmp_w = (int)ceil((float)src_crop_width/copybitsMinScale);
+         tmp_h = (int)ceil((float)src_crop_height/copybitsMinScale);
        }
        ALOGD("%s:%d::tmp_w = %d,tmp_h = %d",__FUNCTION__,__LINE__,tmp_w,tmp_h);
 

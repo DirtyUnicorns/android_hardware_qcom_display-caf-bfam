@@ -208,6 +208,50 @@ void AdrenoMemInfo::getAlignedWidthAndHeight(int width, int height, int format,
                 aligned_w = ALIGN(width, 64);
                 aligned_h = ALIGN(height, 64);
                 break;
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_4x4_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_5x4_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_5x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_6x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_6x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_8x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_8x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_8x8_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_10x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_10x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_10x8_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_10x10_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_12x10_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_RGBA_ASTC_12x12_KHR:
+            case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR:
+                if(LINK_adreno_compute_compressedfmt_aligned_width_and_height) {
+                    int bytesPerPixel = 0;
+                    int raster_mode         = 0;   //Adreno unknown raster mode.
+                    int padding_threshold   = 512; //Threshold for padding
+                    //surfaces.
+
+                    LINK_adreno_compute_compressedfmt_aligned_width_and_height(
+                        width, height, format, 0,raster_mode, padding_threshold,
+                        &aligned_w, &aligned_h, &bytesPerPixel);
+
+                } else {
+                    ALOGW("%s: Warning!! Symbols" \
+                          " compute_compressedfmt_aligned_width_and_height" \
+                          " not found", __FUNCTION__);
+                }
+                break;
             default: break;
         }
     }
@@ -319,6 +363,39 @@ IMemAlloc* IonController::getAllocator(int flags)
 
 bool isMacroTileEnabled(int format, int usage)
 {
+    bool tileEnabled = false;
+
+    // Check whether GPU & MDSS supports MacroTiling feature
+    if(AdrenoMemInfo::getInstance().isMacroTilingSupportedByGPU() &&
+            qdutils::MDPVersion::getInstance().supportsMacroTile())
+    {
+        // check the format
+        switch(format)
+        {
+            case  HAL_PIXEL_FORMAT_RGBA_8888:
+            case  HAL_PIXEL_FORMAT_RGBX_8888:
+            case  HAL_PIXEL_FORMAT_BGRA_8888:
+            case  HAL_PIXEL_FORMAT_RGB_565:
+                {
+                    tileEnabled = true;
+                    // check the usage flags
+                    if (usage & (GRALLOC_USAGE_SW_READ_MASK |
+                                GRALLOC_USAGE_SW_WRITE_MASK)) {
+                        // Application intends to use CPU for rendering
+                        tileEnabled = false;
+                    }
+                    break;
+                }
+            default:
+                break;
+        }
+    }
+    return tileEnabled;
+}
+
+// helper function
+size_t getSize(int format, int width, int height, const int alignedw,
+        const int alignedh) {
     size_t size = 0;
 
     switch (format) {

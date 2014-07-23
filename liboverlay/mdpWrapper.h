@@ -179,6 +179,7 @@ inline bool setOverlay(int fd, mdp_overlay& ov) {
 }
 
 inline bool validateAndSet(const int& fd, mdp_overlay_list& list) {
+    ATRACE_CALL();
     if (ioctl(fd, MSMFB_OVERLAY_PREPARE, &list) < 0) {
         ALOGD_IF(IOCTL_DEBUG, "Failed to call ioctl MSMFB_OVERLAY_PREPARE "
                 "err=%s", strerror(errno));

@@ -45,6 +45,7 @@ enum mdp_rev {
     MDSS_MDP_HW_REV_103 = 0x10030000, //8084
     MDSS_MDP_HW_REV_104 = 0x10040000, //Next version
     MDSS_MDP_HW_REV_105 = 0x10050000, //Next version
+    MDSS_MDP_HW_REV_106 = 0x10060000, //8x16
     MDSS_MDP_HW_REV_107 = 0x10070000, //Next version
     MDSS_MDP_HW_REV_200 = 0x20000000, //8092
     MDSS_MDP_HW_REV_206 = 0x20060000, //Future
@@ -52,7 +53,9 @@ enum mdp_rev {
 #else
 enum mdp_rev {
     MDSS_MDP_HW_REV_104 = 0x10040000, //Next version
+    MDSS_MDP_HW_REV_106 = 0x10060000, //8x16
     MDSS_MDP_HW_REV_206 = 0x20060000, //Future
+    MDSS_MDP_HW_REV_107 = 0x10070000, //Next version
 };
 #endif
 
@@ -404,6 +407,11 @@ bool MDPVersion::is8084() {
 bool MDPVersion::is8092() {
     return (mMdpRev >= MDSS_MDP_HW_REV_200 and
             mMdpRev < MDSS_MDP_HW_REV_206);
+}
+
+bool MDPVersion::is8x16() {
+    return (mMdpRev >= MDSS_MDP_HW_REV_106 and
+            mMdpRev < MDSS_MDP_HW_REV_107);
 }
 
 }; //namespace qdutils

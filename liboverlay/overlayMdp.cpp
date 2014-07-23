@@ -347,15 +347,15 @@ bool MdpCtrl::validateAndSet(MdpCtrl* mdpCtrlArray[], const int& count,
     list.num_overlays = count;
     list.overlay_list = ovArray;
 
-#ifdef USES_QSEED_SCALAR
-    Scale *scalar = Overlay::getScalar();
-    if(scalar) {
-        scalar->applyScale(&list);
+   int (*fnProgramScale)(struct mdp_overlay_list *) =
+        Overlay::getFnProgramScale();
+    if(fnProgramScale) {
+        fnProgramScale(&list);
     }
-#endif
 
     if(!mdp_wrapper::validateAndSet(fbFd, list)) {
-        if(list.processed_overlays < list.num_overlays) {
+        /* No dump for failure due to insufficient resource */
+        if(errno != E2BIG) {
             mdp_wrapper::dump("Bad ov dump: ",
                 *list.overlay_list[list.processed_overlays]);
         }

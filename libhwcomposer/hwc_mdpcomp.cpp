@@ -131,14 +131,6 @@ bool MDPComp::init(hwc_context_t *ctx) {
             sDebugLogs = true;
     }
 
-    if(property_get("persist.hwc.partialupdate", property, NULL) > 0) {
-        if((atoi(property) != 0) && ctx->mMDP.panel == MIPI_CMD_PANEL &&
-           qdutils::MDPVersion::getInstance().is8x74v2())
-            sEnablePartialFrameUpdate = true;
-    }
-    ALOGE_IF(isDebug(), "%s: Partial Update applicable?: %d",__FUNCTION__,
-                                                    sEnablePartialFrameUpdate);
-
     sMaxPipesPerMixer = MAX_PIPES_PER_MIXER;
     if(property_get("debug.mdpcomp.maxpermixer", property, "-1") > 0) {
         int val = atoi(property);
@@ -426,7 +418,8 @@ bool MDPComp::isFrameDoable(hwc_context_t *ctx) {
     if(!isEnabled()) {
         ALOGD_IF(isDebug(),"%s: MDP Comp. not enabled.", __FUNCTION__);
         ret = false;
-    } else if(qdutils::MDPVersion::getInstance().is8x26() &&
+    } else if((qdutils::MDPVersion::getInstance().is8x26() ||
+               qdutils::MDPVersion::getInstance().is8x16()) &&
             ctx->mVideoTransFlag &&
             isSecondaryConnected(ctx)) {
         //1 Padding round to shift pipes across mixers
@@ -476,7 +469,7 @@ bool MDPCompNonSplit::validateAndApplyROI(hwc_context_t *ctx,
         } else {
             /* Reset frame ROI when any layer which needs scaling also needs ROI
              * cropping */
-            if((res_w != dst_w || res_h != dst_h) && needsScaling (layer)) {
+            if(!isSameRect(res, dstRect) && needsScaling (layer)) {
                 ALOGI("%s: Resetting ROI due to scaling", __FUNCTION__);
                 memset(&mCurrentFrame.drop, 0, sizeof(mCurrentFrame.drop));
                 mCurrentFrame.dropCount = 0;
@@ -1640,7 +1633,8 @@ int MDPComp::prepare(hwc_context_t *ctx, hwc_display_contents_1_t* list) {
     if(isFrameDoable(ctx)) {
         generateROI(ctx, list);
 
-        if(tryFullFrame(ctx, list) || tryVideoOnly(ctx, list)) {
+        mModeOn = tryFullFrame(ctx, list) || tryVideoOnly(ctx, list);
+        if(mModeOn) {
             setMDPCompLayerFlags(ctx, list);
         } else {
             resetROI(ctx, mDpy);
@@ -1781,17 +1775,17 @@ bool MDPCompNonSplit::allocLayerPipes(hwc_context_t *ctx,
         info.rot = NULL;
         MdpPipeInfoNonSplit& pipe_info = *(MdpPipeInfoNonSplit*)info.pipeInfo;
 
-        if(isYuvBuffer(hnd)) {
-            type = MDPCOMP_OV_VG;
-        } else if(qdutils::MDPVersion::getInstance().is8x26() &&
-                (ctx->dpyAttr[HWC_DISPLAY_PRIMARY].xres > 1024)) {
-            if(qhwc::needsScaling(layer))
-                type = MDPCOMP_OV_RGB;
-        } else if(!qhwc::needsScaling(layer)
-            && Overlay::getDMAMode() != Overlay::DMA_BLOCK_MODE
-            && ctx->mMDP.version >= qdutils::MDSS_V5) {
-            type = MDPCOMP_OV_DMA;
-        }
+        Overlay::PipeSpecs pipeSpecs;
+        pipeSpecs.formatClass = isYuvBuffer(hnd) ?
+                Overlay::FORMAT_YUV : Overlay::FORMAT_RGB;
+        pipeSpecs.needsScaling = qhwc::needsScaling(layer) or
+                (qdutils::MDPVersion::getInstance().is8x26() and
+                ctx->dpyAttr[HWC_DISPLAY_PRIMARY].xres > 1024);
+        pipeSpecs.dpy = mDpy;
+        pipeSpecs.fb = false;
+        pipeSpecs.numActiveDisplays = ctx->numActiveDisplays;
+
+        pipe_info.index = ctx->mOverlay->getPipe(pipeSpecs);
 
         if(pipe_info.index == ovutils::OV_INVALID) {
             ALOGD_IF(isDebug(), "%s: Unable to get pipe", __FUNCTION__);
@@ -1820,11 +1814,6 @@ bool MDPCompNonSplit::draw(hwc_context_t *ctx, hwc_display_contents_1_t* list) {
     if(!isEnabled() or !mModeOn) {
         ALOGD_IF(isDebug(),"%s: MDP Comp not enabled/configured", __FUNCTION__);
         return true;
-    }
-
-    // Set the Handle timeout to true for MDP or MIXED composition.
-    if(idleInvalidator && !sIdleFallBack && mCurrentFrame.mdpCount) {
-        sHandleTimeout = true;
     }
 
     // Set the Handle timeout to true for MDP or MIXED composition.
@@ -2083,11 +2072,6 @@ bool MDPCompSplit::draw(hwc_context_t *ctx, hwc_display_contents_1_t* list) {
     if(!isEnabled() or !mModeOn) {
         ALOGD_IF(isDebug(),"%s: MDP Comp not enabled/configured", __FUNCTION__);
         return true;
-    }
-
-    // Set the Handle timeout to true for MDP or MIXED composition.
-    if(idleInvalidator && !sIdleFallBack && mCurrentFrame.mdpCount) {
-        sHandleTimeout = true;
     }
 
     // Set the Handle timeout to true for MDP or MIXED composition.

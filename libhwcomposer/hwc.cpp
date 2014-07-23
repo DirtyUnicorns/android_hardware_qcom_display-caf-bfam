@@ -272,7 +272,10 @@ static int hwc_prepare_primary(hwc_composer_device_1 *dev,
 
         if (fbComp) {
             const int fbZ = 0;
-            ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
+            if(not ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ)) {
+                ctx->mOverlay->clear(dpy);
+                ctx->mLayerRotMap[dpy]->clear();
+            }
         }
 
         if (ctx->mMDP.version < qdutils::MDP_V4_0) {
@@ -299,7 +302,11 @@ static int hwc_prepare_external(hwc_composer_device_1 *dev,
             setListStats(ctx, list, dpy);
             if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
                 const int fbZ = 0;
-                ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
+                if(not ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ))
+                {
+                    ctx->mOverlay->clear(dpy);
+                    ctx->mLayerRotMap[dpy]->clear();
+                }
             }
         } else {
             /* External Display is in Pause state.
@@ -314,39 +321,6 @@ static int hwc_prepare_external(hwc_composer_device_1 *dev,
     }
     return 0;
 }
-
-static int hwc_prepare_virtual(hwc_composer_device_1 *dev,
-        hwc_display_contents_1_t *list) {
-    ATRACE_CALL();
-
-    hwc_context_t* ctx = (hwc_context_t*)(dev);
-    const int dpy = HWC_DISPLAY_VIRTUAL;
-
-    if (LIKELY(list && list->numHwLayers > 1) &&
-            ctx->dpyAttr[dpy].isActive &&
-            ctx->dpyAttr[dpy].connected) {
-        reset_layer_prop(ctx, dpy, list->numHwLayers - 1);
-        if(!ctx->dpyAttr[dpy].isPause) {
-            ctx->dpyAttr[dpy].isConfiguring = false;
-            setListStats(ctx, list, dpy);
-            if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
-                const int fbZ = 0;
-                ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
-            }
-        } else {
-            /* Virtual Display is in Pause state.
-             * Mark all application layers as OVERLAY so that
-             * GPU will not compose.
-             */
-            for(size_t i = 0 ;i < (size_t)(list->numHwLayers - 1); i++) {
-                hwc_layer_1_t *layer = &list->hwLayers[i];
-                layer->compositionType = HWC_OVERLAY;
-            }
-        }
-    }
-    return 0;
-}
-
 
 static int hwc_prepare(hwc_composer_device_1 *dev, size_t numDisplays,
                        hwc_display_contents_1_t** displays)

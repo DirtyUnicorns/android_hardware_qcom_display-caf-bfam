@@ -31,7 +31,6 @@
 
 
 #define MAX_FRAME_BUFFER_NAME_SIZE      (80)
-#define MAX_DISPLAY_DEVICES             (3)
 #define QD_UTILS_DEBUG 0
 
 int getHDMINode(void)
