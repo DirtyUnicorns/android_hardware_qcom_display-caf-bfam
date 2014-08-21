@@ -3,7 +3,7 @@
 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
- * met:
+ * met
  *   * Redistributions of source code must retain the above copyright
  *     notice, this list of conditions and the following disclaimer.
  *   * Redistributions in binary form must reproduce the above
@@ -594,7 +594,7 @@ int getYUVPlaneInfo(private_handle_t* hnd, struct android_ycbcr* ycbcr)
         //Planar
         case HAL_PIXEL_FORMAT_YV12:
             ystride = hnd->width;
-            cstride = hnd->width/2;
+            cstride = ALIGN(hnd->width/2, 16);
             ycbcr->y  = (void*)hnd->base;
             ycbcr->cr = (void*)(hnd->base + ystride * hnd->height);
             ycbcr->cb = (void*)(hnd->base + ystride * hnd->height +
