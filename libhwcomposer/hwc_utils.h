@@ -590,6 +590,7 @@ struct hwc_context_t {
     bool enableABC;
     // PTOR Info
     qhwc::PtorInfo mPtorInfo;
+    uint32_t dynamicfps;
 };
 
 namespace qhwc {
