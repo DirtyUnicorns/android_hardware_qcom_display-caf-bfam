@@ -57,13 +57,6 @@ enum mdp_version {
     MDSS_V5     = 500,
 };
 
-// chip variants have same major number and minor numbers usually vary
-// for e.g., MDSS_MDP_HW_REV_101 is 0x10010000
-//                                    1001       -  major number
-//                                        0000   -  minor number
-// 8x26 v1 minor number is 0000
-//      v2 minor number is 0001 etc..
-
 enum {
     MAX_DISPLAY_DIM = 2048,
 };
